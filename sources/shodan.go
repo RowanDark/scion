@@ -11,10 +11,11 @@ import (
 
 type Shodan struct{}
 
-func (s *Shodan) Name() string      { return "Shodan" }
-func (s *Shodan) ID() string        { return "shodan" }
-func (s *Shodan) NeedsKey() bool    { return true }
-func (s *Shodan) IsAvailable() bool { return os.Getenv("SHODAN_API_KEY") != "" }
+func (s *Shodan) Name() string        { return "Shodan" }
+func (s *Shodan) ID() string          { return "shodan" }
+func (s *Shodan) NeedsKey() bool      { return true }
+func (s *Shodan) IsAvailable() bool   { return os.Getenv("SHODAN_API_KEY") != "" }
+func (s *Shodan) DefaultTimeout() int { return 0 }
 
 func (s *Shodan) Run(ctx context.Context, domain string) ([]string, error) {
 	key := os.Getenv("SHODAN_API_KEY")

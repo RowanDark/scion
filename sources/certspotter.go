@@ -9,10 +9,11 @@ import (
 
 type CertSpotter struct{}
 
-func (c *CertSpotter) Name() string      { return "Certspotter" }
-func (c *CertSpotter) ID() string        { return "certspotter" }
-func (c *CertSpotter) NeedsKey() bool    { return false }
-func (c *CertSpotter) IsAvailable() bool { return true }
+func (c *CertSpotter) Name() string        { return "Certspotter" }
+func (c *CertSpotter) ID() string          { return "certspotter" }
+func (c *CertSpotter) NeedsKey() bool      { return false }
+func (c *CertSpotter) IsAvailable() bool   { return true }
+func (c *CertSpotter) DefaultTimeout() int { return 0 }
 
 func (c *CertSpotter) Run(ctx context.Context, domain string) ([]string, error) {
 	url := fmt.Sprintf("https://api.certspotter.com/v1/issuances?domain=%s&include_subdomains=true&expand=dns_names", domain)

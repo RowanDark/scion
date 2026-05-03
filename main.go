@@ -209,7 +209,11 @@ func runDomain(
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			srcTimeout := timeout
+			if src.DefaultTimeout() > 0 {
+				srcTimeout = time.Duration(src.DefaultTimeout()) * time.Second
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), srcTimeout)
 			defer cancel()
 
 			domains, err := src.Run(ctx, domain)
@@ -397,6 +401,8 @@ func keyEnvVar(id string) string {
 		return "SHODAN_API_KEY"
 	case "facebook":
 		return "FB_APP_ID/SECRET"
+	case "leakix":
+		return "LEAKIX_API_KEY"
 	}
 	return ""
 }

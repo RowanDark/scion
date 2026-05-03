@@ -11,14 +11,15 @@ import (
 
 type Wayback struct{}
 
-func (w *Wayback) Name() string      { return "Wayback Machine" }
-func (w *Wayback) ID() string        { return "wayback" }
-func (w *Wayback) NeedsKey() bool    { return false }
-func (w *Wayback) IsAvailable() bool { return true }
+func (w *Wayback) Name() string        { return "Wayback Machine" }
+func (w *Wayback) ID() string          { return "wayback" }
+func (w *Wayback) NeedsKey() bool      { return false }
+func (w *Wayback) IsAvailable() bool   { return true }
+func (w *Wayback) DefaultTimeout() int { return 90 }
 
 func (w *Wayback) Run(ctx context.Context, domain string) ([]string, error) {
 	apiURL := fmt.Sprintf(
-		"http://web.archive.org/cdx/search/cdx?url=*.%s&output=json&fl=original&collapse=urlkey",
+		"https://web.archive.org/cdx/search/cdx?url=*.%s&output=json&fl=original&collapse=urlkey&limit=10000",
 		domain,
 	)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
