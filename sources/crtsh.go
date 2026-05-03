@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -19,12 +20,20 @@ func (c *CrtSh) IsAvailable() bool   { return true }
 func (c *CrtSh) DefaultTimeout() int { return 0 }
 
 func (c *CrtSh) Run(ctx context.Context, domain string) ([]string, error) {
+	// small random delay 0-500ms before first attempt
+	jitter := time.Duration(rand.Intn(500)) * time.Millisecond
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(jitter):
+	}
+
 	results, err := c.fetch(ctx, domain)
 	if err != nil {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-time.After(3 * time.Second):
+		case <-time.After(5 * time.Second):
 		}
 		results, err = c.fetch(ctx, domain)
 	}
@@ -32,13 +41,15 @@ func (c *CrtSh) Run(ctx context.Context, domain string) ([]string, error) {
 }
 
 func (c *CrtSh) fetch(ctx context.Context, domain string) ([]string, error) {
-	url := fmt.Sprintf("https://crt.sh/?q=%%25.%s&output=json", domain)
+	url := fmt.Sprintf("https://crt.sh/?q=%%25.%s&output=json&excluded=expired", domain)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "scion/1.0 (github.com/RowanDark/scion)")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0")
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+	req.Header.Set("Connection", "keep-alive")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

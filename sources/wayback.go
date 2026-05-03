@@ -26,7 +26,7 @@ func (w *Wayback) Run(ctx context.Context, domain string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "scion/1.0 (github.com/RowanDark/scion)")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
