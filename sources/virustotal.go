@@ -12,10 +12,11 @@ import (
 
 type VirusTotal struct{}
 
-func (v *VirusTotal) Name() string    { return "VirusTotal" }
-func (v *VirusTotal) ID() string      { return "virustotal" }
-func (v *VirusTotal) NeedsKey() bool  { return true }
-func (v *VirusTotal) IsAvailable() bool { return os.Getenv("VT_API_KEY") != "" }
+func (v *VirusTotal) Name() string        { return "VirusTotal" }
+func (v *VirusTotal) ID() string          { return "virustotal" }
+func (v *VirusTotal) NeedsKey() bool      { return true }
+func (v *VirusTotal) IsAvailable() bool   { return os.Getenv("VT_API_KEY") != "" }
+func (v *VirusTotal) DefaultTimeout() int { return 0 }
 
 func (v *VirusTotal) Run(ctx context.Context, domain string) ([]string, error) {
 	key := os.Getenv("VT_API_KEY")

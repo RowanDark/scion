@@ -8,5 +8,6 @@ type Source interface {
 	ID() string
 	NeedsKey() bool
 	IsAvailable() bool
+	DefaultTimeout() int // 0 = use global --timeout value
 	Run(ctx context.Context, domain string) ([]string, error)
 }

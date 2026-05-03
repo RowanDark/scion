@@ -12,12 +12,11 @@ import (
 
 type Facebook struct{}
 
-func (f *Facebook) Name() string    { return "Facebook CT" }
-func (f *Facebook) ID() string      { return "facebook" }
-func (f *Facebook) NeedsKey() bool  { return true }
-func (f *Facebook) IsAvailable() bool {
-	return os.Getenv("FB_APP_ID") != "" && os.Getenv("FB_APP_SECRET") != ""
-}
+func (f *Facebook) Name() string        { return "Facebook CT" }
+func (f *Facebook) ID() string          { return "facebook" }
+func (f *Facebook) NeedsKey() bool      { return true }
+func (f *Facebook) IsAvailable() bool   { return os.Getenv("FB_APP_ID") != "" && os.Getenv("FB_APP_SECRET") != "" }
+func (f *Facebook) DefaultTimeout() int { return 0 }
 
 func (f *Facebook) Run(ctx context.Context, domain string) ([]string, error) {
 	appID := os.Getenv("FB_APP_ID")

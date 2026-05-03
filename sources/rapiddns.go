@@ -12,10 +12,11 @@ import (
 
 type RapidDNS struct{}
 
-func (r *RapidDNS) Name() string      { return "RapidDNS" }
-func (r *RapidDNS) ID() string        { return "rapiddns" }
-func (r *RapidDNS) NeedsKey() bool    { return false }
-func (r *RapidDNS) IsAvailable() bool { return true }
+func (r *RapidDNS) Name() string        { return "RapidDNS" }
+func (r *RapidDNS) ID() string          { return "rapiddns" }
+func (r *RapidDNS) NeedsKey() bool      { return false }
+func (r *RapidDNS) IsAvailable() bool   { return true }
+func (r *RapidDNS) DefaultTimeout() int { return 0 }
 
 var fqdnRe = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$`)
 

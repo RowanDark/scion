@@ -74,7 +74,7 @@ scion --output csv --out-file recon.csv example.com
 | `--subs-only` | false | Return only subdomains of the target domain |
 | `--output`, `-o` | `text` | Output format: `text`, `json`, `csv`, `md` |
 | `--out-file`, `-f` | — | Write output to a file |
-| `--timeout` | `30` | Per-source timeout in seconds |
+| `--timeout` | `30` | Per-source timeout in seconds. Note: Some sources (Wayback Machine) have longer internal timeouts and will not be affected by `--timeout` values lower than their source default. |
 | `--concurrency` | `5` | Max concurrent source queries |
 | `--silent` | false | Suppress banner, warnings, and status output |
 | `--verify` | false | DNS-validate results and annotate which resolve |
@@ -97,7 +97,6 @@ scion --output csv --out-file recon.csv example.com
 | Wayback Machine | `wayback` | CDX API subdomain extraction |
 | RapidDNS | `rapiddns` | Passive DNS dataset |
 | AlienVault OTX | `alienvault` | Open threat exchange passive DNS |
-| LeakIX | `leakix` | Public endpoint, exposed asset indexing |
 
 ### API-Backed (optional)
 
@@ -109,6 +108,9 @@ Set the relevant environment variable to enable. Sources are silently skipped if
 | SecurityTrails | `securitytrails` | `ST_API_KEY` |
 | Shodan InternetDB | `shodan` | `SHODAN_API_KEY` |
 | Facebook CT | `facebook` | `FB_APP_ID` + `FB_APP_SECRET` |
+| LeakIX | `leakix` | `LEAKIX_API_KEY` |
+
+Free tier key available at: https://leakix.net
 
 ### Managing API Keys
 
@@ -120,6 +122,7 @@ export ST_API_KEY="your_key_here"
 export SHODAN_API_KEY="your_key_here"
 export FB_APP_ID="your_app_id"
 export FB_APP_SECRET="your_app_secret"
+export LEAKIX_API_KEY="your_key_here"
 ```
 
 ---

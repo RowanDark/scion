@@ -13,10 +13,11 @@ import (
 
 type HackerTarget struct{}
 
-func (h *HackerTarget) Name() string      { return "HackerTarget" }
-func (h *HackerTarget) ID() string        { return "hackertarget" }
-func (h *HackerTarget) NeedsKey() bool    { return false }
-func (h *HackerTarget) IsAvailable() bool { return true }
+func (h *HackerTarget) Name() string        { return "HackerTarget" }
+func (h *HackerTarget) ID() string          { return "hackertarget" }
+func (h *HackerTarget) NeedsKey() bool      { return false }
+func (h *HackerTarget) IsAvailable() bool   { return true }
+func (h *HackerTarget) DefaultTimeout() int { return 0 }
 
 func (h *HackerTarget) Run(ctx context.Context, domain string) ([]string, error) {
 	url := fmt.Sprintf("https://api.hackertarget.com/hostsearch/?q=%s", domain)

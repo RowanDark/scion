@@ -9,10 +9,11 @@ import (
 
 type AlienVault struct{}
 
-func (a *AlienVault) Name() string      { return "AlienVault OTX" }
-func (a *AlienVault) ID() string        { return "alienvault" }
-func (a *AlienVault) NeedsKey() bool    { return false }
-func (a *AlienVault) IsAvailable() bool { return true }
+func (a *AlienVault) Name() string        { return "AlienVault OTX" }
+func (a *AlienVault) ID() string          { return "alienvault" }
+func (a *AlienVault) NeedsKey() bool      { return false }
+func (a *AlienVault) IsAvailable() bool   { return true }
+func (a *AlienVault) DefaultTimeout() int { return 0 }
 
 func (a *AlienVault) Run(ctx context.Context, domain string) ([]string, error) {
 	url := fmt.Sprintf("https://otx.alienvault.com/api/v1/indicators/domain/%s/passive_dns", domain)

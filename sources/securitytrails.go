@@ -11,10 +11,11 @@ import (
 
 type SecurityTrails struct{}
 
-func (s *SecurityTrails) Name() string      { return "SecurityTrails" }
-func (s *SecurityTrails) ID() string        { return "securitytrails" }
-func (s *SecurityTrails) NeedsKey() bool    { return true }
-func (s *SecurityTrails) IsAvailable() bool { return os.Getenv("ST_API_KEY") != "" }
+func (s *SecurityTrails) Name() string        { return "SecurityTrails" }
+func (s *SecurityTrails) ID() string          { return "securitytrails" }
+func (s *SecurityTrails) NeedsKey() bool      { return true }
+func (s *SecurityTrails) IsAvailable() bool   { return os.Getenv("ST_API_KEY") != "" }
+func (s *SecurityTrails) DefaultTimeout() int { return 0 }
 
 func (s *SecurityTrails) Run(ctx context.Context, domain string) ([]string, error) {
 	key := os.Getenv("ST_API_KEY")
