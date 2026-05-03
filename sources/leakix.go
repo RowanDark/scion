@@ -29,8 +29,16 @@ func (l *LeakIX) Run(ctx context.Context, domain string) ([]string, error) {
 	}
 	defer resp.Body.Close()
 
+	// 404 means no data for this domain — not an error condition
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("leakix: unexpected status %d", resp.StatusCode)
+	}
+
 	var results []struct {
-		Subdomain string `json:"subdomain"`
+		Subdomain string `json:"Subdomain"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
 		return nil, fmt.Errorf("leakix: decode error: %w", err)

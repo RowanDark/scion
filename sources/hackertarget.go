@@ -2,8 +2,11 @@ package sources
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -29,9 +32,19 @@ func (h *HackerTarget) Run(ctx context.Context, domain string) ([]string, error)
 	}
 	defer resp.Body.Close()
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	bodyStr := string(body)
+	if strings.Contains(bodyStr, "API count exceeded") || strings.Contains(bodyStr, "error check your api") {
+		return nil, errors.New("hackertarget: rate limit or API error")
+	}
+
 	seen := make(map[string]bool)
 	var out []string
-	scanner := bufio.NewScanner(resp.Body)
+	scanner := bufio.NewScanner(bytes.NewReader(body))
 	for scanner.Scan() {
 		line := scanner.Text()
 		// format: subdomain,ip

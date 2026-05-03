@@ -30,7 +30,8 @@ func (c *CrtSh) Run(ctx context.Context, domain string) ([]string, error) {
 	defer resp.Body.Close()
 
 	var results []struct {
-		Name string `json:"name_value"`
+		NameValue  string `json:"name_value"`
+		CommonName string `json:"common_name"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
 		return nil, fmt.Errorf("crtsh: decode error: %w", err)
@@ -38,14 +39,18 @@ func (c *CrtSh) Run(ctx context.Context, domain string) ([]string, error) {
 
 	seen := make(map[string]bool)
 	var out []string
-	for _, r := range results {
-		for _, name := range strings.Split(r.Name, "\n") {
+	addNames := func(raw string) {
+		for _, name := range strings.Split(raw, "\n") {
 			name = cleanDomain(name)
 			if name != "" && !seen[name] {
 				seen[name] = true
 				out = append(out, name)
 			}
 		}
+	}
+	for _, r := range results {
+		addNames(r.NameValue)
+		addNames(r.CommonName)
 	}
 	return out, nil
 }

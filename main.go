@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -11,12 +12,16 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/term"
+
 	scionDNS "github.com/RowanDark/scion/dns"
 	"github.com/RowanDark/scion/diff"
 	"github.com/RowanDark/scion/filter"
 	"github.com/RowanDark/scion/output"
 	"github.com/RowanDark/scion/sources"
 )
+
+var version = "dev" // overridden by -ldflags at build time
 
 const banner = `
  ___  ___ _  ___  _ __
@@ -46,17 +51,19 @@ func main() {
 
 func run() int {
 	var (
-		subsOnly    bool
-		outputFmt   string
-		outFile     string
-		timeoutSecs int
-		concurrency int
-		silent      bool
-		verify      bool
-		scopeFile   string
-		compare     string
-		sourcesFlag string
-		listSources bool
+		subsOnly       bool
+		outputFmt      string
+		outFile        string
+		timeoutSecs    int
+		concurrency    int
+		dnsConcurrency int
+		silent         bool
+		verify         bool
+		scopeFile      string
+		compare        string
+		sourcesFlag    string
+		listSources    bool
+		printVersion   bool
 	)
 
 	flag.BoolVar(&subsOnly, "subs-only", false, "Only return subdomains of the target domain")
@@ -66,18 +73,25 @@ func run() int {
 	flag.StringVar(&outFile, "f", "", "Write output to file (shorthand)")
 	flag.IntVar(&timeoutSecs, "timeout", 30, "Per-source HTTP timeout in seconds")
 	flag.IntVar(&concurrency, "concurrency", 5, "Max concurrent source goroutines")
+	flag.IntVar(&dnsConcurrency, "dns-concurrency", 30, "Max concurrent DNS validation goroutines")
 	flag.BoolVar(&silent, "silent", false, "Suppress banner, warnings, and status messages")
 	flag.BoolVar(&verify, "verify", false, "DNS-validate each result")
 	flag.StringVar(&scopeFile, "scope-file", "", "Path to scope file for filtering")
 	flag.StringVar(&compare, "compare", "", "Path to previous Scion output for diff")
 	flag.StringVar(&sourcesFlag, "sources", "", "Comma-separated source IDs to use (default: all available)")
 	flag.BoolVar(&listSources, "list-sources", false, "Print all sources and exit")
+	flag.BoolVar(&printVersion, "version", false, "Print version and exit")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: scion [flags] <domain>\n\nFlags:\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+
+	if printVersion {
+		fmt.Println(version)
+		return 0
+	}
 
 	if !silent {
 		fmt.Fprint(os.Stderr, banner)
@@ -88,9 +102,27 @@ func run() int {
 		return 0
 	}
 
-	domain := strings.ToLower(strings.TrimSpace(flag.Arg(0)))
-	if domain == "" {
-		fmt.Fprintln(os.Stderr, "[scion] error: no domain provided")
+	// Collect target domains from positional args or stdin
+	var domains []string
+	args := flag.Args()
+	if len(args) > 0 {
+		domains = args
+	} else if !term.IsTerminal(int(os.Stdin.Fd())) {
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line != "" {
+				domains = append(domains, line)
+			}
+		}
+	} else {
+		fmt.Fprintln(os.Stderr, "error: no domain provided")
+		flag.Usage()
+		return 1
+	}
+
+	if len(domains) == 0 {
+		fmt.Fprintln(os.Stderr, "error: no domain provided")
 		flag.Usage()
 		return 1
 	}
@@ -112,6 +144,30 @@ func run() int {
 		w = f
 	}
 
+	exitCode := 0
+	for _, domain := range domains {
+		domain = strings.ToLower(strings.TrimSpace(domain))
+		if domain == "" {
+			continue
+		}
+		code := runDomain(domain, w, formatter, sourcesFlag, silent, subsOnly, verify,
+			scopeFile, compare, concurrency, dnsConcurrency, timeoutSecs)
+		if code > exitCode {
+			exitCode = code
+		}
+	}
+	return exitCode
+}
+
+func runDomain(
+	domain string,
+	w io.Writer,
+	formatter output.Formatter,
+	sourcesFlag string,
+	silent, subsOnly, verify bool,
+	scopeFile, compare string,
+	concurrency, dnsConcurrency, timeoutSecs int,
+) int {
 	// Build source list
 	activeSources := buildSourceList(sourcesFlag, silent)
 	if len(activeSources) == 0 {
@@ -204,14 +260,15 @@ func run() int {
 	}
 	sort.Strings(allDomains)
 
-	// DNS validation
+	// DNS validation uses dedicated concurrency setting
 	var resolveMap map[string]bool
 	if verify {
-		resolveMap = scionDNS.ValidateDomains(allDomains, concurrency, timeout)
+		resolveMap = scionDNS.ValidateDomains(allDomains, dnsConcurrency, timeout)
 	}
 
 	// Scope filtering
 	var scope []string
+	var err error
 	if scopeFile != "" {
 		scope, err = filter.LoadScope(scopeFile)
 		if err != nil {
@@ -343,6 +400,5 @@ func keyEnvVar(id string) string {
 	}
 	return ""
 }
-
 
 func boolPtr(b bool) *bool { return &b }
