@@ -1,145 +1,348 @@
 package main
 
 import (
-	"bufio"
-	"encoding/json"
+	"context"
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
-	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	scionDNS "github.com/RowanDark/scion/dns"
+	"github.com/RowanDark/scion/diff"
+	"github.com/RowanDark/scion/filter"
+	"github.com/RowanDark/scion/output"
+	"github.com/RowanDark/scion/sources"
 )
 
+const banner = `
+ ___  ___ _  ___  _ __
+/ __|/ __| |/ _ \| '_ \
+\__ \ (__| | (_) | | | |
+|___/\___|_|\___/|_| |_|  v1.0
+
+`
+
+var allSources = []sources.Source{
+	&sources.CrtSh{},
+	&sources.CertSpotter{},
+	&sources.HackerTarget{},
+	&sources.Wayback{},
+	&sources.RapidDNS{},
+	&sources.AlienVault{},
+	&sources.LeakIX{},
+	&sources.VirusTotal{},
+	&sources.SecurityTrails{},
+	&sources.Shodan{},
+	&sources.Facebook{},
+}
+
 func main() {
-	var subsOnly bool
-	flag.BoolVar(&subsOnly, "subs-only", false, "Only include subdomains of search domain")
+	os.Exit(run())
+}
+
+func run() int {
+	var (
+		subsOnly    bool
+		outputFmt   string
+		outFile     string
+		timeoutSecs int
+		concurrency int
+		silent      bool
+		verify      bool
+		scopeFile   string
+		compare     string
+		sourcesFlag string
+		listSources bool
+	)
+
+	flag.BoolVar(&subsOnly, "subs-only", false, "Only return subdomains of the target domain")
+	flag.StringVar(&outputFmt, "output", "text", "Output format: text, json, csv, md")
+	flag.StringVar(&outputFmt, "o", "text", "Output format (shorthand)")
+	flag.StringVar(&outFile, "out-file", "", "Write output to file (default: stdout)")
+	flag.StringVar(&outFile, "f", "", "Write output to file (shorthand)")
+	flag.IntVar(&timeoutSecs, "timeout", 30, "Per-source HTTP timeout in seconds")
+	flag.IntVar(&concurrency, "concurrency", 5, "Max concurrent source goroutines")
+	flag.BoolVar(&silent, "silent", false, "Suppress banner, warnings, and status messages")
+	flag.BoolVar(&verify, "verify", false, "DNS-validate each result")
+	flag.StringVar(&scopeFile, "scope-file", "", "Path to scope file for filtering")
+	flag.StringVar(&compare, "compare", "", "Path to previous Scion output for diff")
+	flag.StringVar(&sourcesFlag, "sources", "", "Comma-separated source IDs to use (default: all available)")
+	flag.BoolVar(&listSources, "list-sources", false, "Print all sources and exit")
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: scion [flags] <domain>\n\nFlags:\n")
+		flag.PrintDefaults()
+	}
 	flag.Parse()
 
-	var domains io.Reader
-	domains = os.Stdin
-
-	domain := flag.Arg(0)
-	if domain != "" {
-		domains = strings.NewReader(domain)
+	if !silent {
+		fmt.Fprint(os.Stderr, banner)
 	}
 
-	sources := []fetchFn{
-		fetchCertSpotter,
-		fetchHackerTarget,
-		fetchThreatCrowd,
-		fetchCrtSh,
-		fetchFacebook,
-		//fetchWayback, // A little too slow :(
-		fetchVirusTotal,
-		fetchFindSubDomains,
-		fetchUrlscan,
-		fetchBufferOverrun,
+	if listSources {
+		printSourceTable()
+		return 0
 	}
 
-	out := make(chan string)
+	domain := strings.ToLower(strings.TrimSpace(flag.Arg(0)))
+	if domain == "" {
+		fmt.Fprintln(os.Stderr, "[scion] error: no domain provided")
+		flag.Usage()
+		return 1
+	}
+
+	formatter, err := output.Get(outputFmt)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[scion] error: %v\n", err)
+		return 1
+	}
+
+	var w io.Writer = os.Stdout
+	if outFile != "" {
+		f, err := os.Create(outFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[scion] error: cannot open output file: %v\n", err)
+			return 1
+		}
+		defer f.Close()
+		w = f
+	}
+
+	// Build source list
+	activeSources := buildSourceList(sourcesFlag, silent)
+	if len(activeSources) == 0 {
+		fmt.Fprintln(os.Stderr, "[scion] error: no sources available")
+		return 1
+	}
+
+	timeout := time.Duration(timeoutSecs) * time.Second
+
+	// Wildcard detection
+	wildcardDetected := false
+	if verify {
+		wc, err := scionDNS.DetectWildcard(domain)
+		if err == nil && wc {
+			wildcardDetected = true
+			if !silent {
+				fmt.Fprintf(os.Stderr, "[WARN] Wildcard DNS detected for %s — validation results may be noisy\n", domain)
+			}
+		}
+	}
+
+	// Run sources concurrently
+	type sourceResult struct {
+		source string
+		domain string
+	}
+	resultCh := make(chan sourceResult, 1000)
+	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 
-	sc := bufio.NewScanner(domains)
-	rl := newRateLimiter(time.Second)
+	sourcesUsed := make([]string, 0, len(activeSources))
+	var sourcesMu sync.Mutex
 
-	for sc.Scan() {
-		domain := strings.ToLower(sc.Text())
+	for _, src := range activeSources {
+		src := src
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
 
-		// call each of the source workers in a goroutine
-		for _, source := range sources {
-			wg.Add(1)
-			fn := source
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
 
-			go func() {
-				defer wg.Done()
-
-				rl.Block(fmt.Sprintf("%#v", fn))
-				names, err := fn(domain)
-
-				if err != nil {
-					//fmt.Fprintf(os.Stderr, "err: %s\n", err)
-					return
+			domains, err := src.Run(ctx, domain)
+			if err != nil {
+				if !silent {
+					fmt.Fprintf(os.Stderr, "[scion] %s: %v\n", src.ID(), err)
 				}
+				return
+			}
 
-				for _, n := range names {
-					n = cleanDomain(n)
-					if subsOnly && !strings.HasSuffix(n, domain) {
-						continue
-					}
-					out <- n
-				}
-			}()
-		}
+			sourcesMu.Lock()
+			sourcesUsed = append(sourcesUsed, src.ID())
+			sourcesMu.Unlock()
+
+			for _, d := range domains {
+				resultCh <- sourceResult{source: src.ID(), domain: d}
+			}
+		}()
 	}
 
-	// close the output channel when all the workers are done
 	go func() {
 		wg.Wait()
-		close(out)
+		close(resultCh)
 	}()
 
-	// track what we've already printed to avoid duplicates
-	printed := make(map[string]bool)
-
-	for n := range out {
-		if _, ok := printed[n]; ok {
+	// Collect and deduplicate
+	type domainEntry struct {
+		source string
+	}
+	domainMap := make(map[string]domainEntry)
+	for r := range resultCh {
+		d := strings.ToLower(r.domain)
+		if d == "" {
 			continue
 		}
-		printed[n] = true
+		if subsOnly && !strings.HasSuffix(d, "."+domain) && d != domain {
+			continue
+		}
+		if _, exists := domainMap[d]; !exists {
+			domainMap[d] = domainEntry{source: r.source}
+		}
+	}
 
-		fmt.Println(n)
+	// Sort for deterministic output
+	allDomains := make([]string, 0, len(domainMap))
+	for d := range domainMap {
+		allDomains = append(allDomains, d)
+	}
+	sort.Strings(allDomains)
+
+	// DNS validation
+	var resolveMap map[string]bool
+	if verify {
+		resolveMap = scionDNS.ValidateDomains(allDomains, concurrency, timeout)
+	}
+
+	// Scope filtering
+	var scope []string
+	if scopeFile != "" {
+		scope, err = filter.LoadScope(scopeFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[scion] error loading scope file: %v\n", err)
+			return 1
+		}
+	}
+
+	// Diff
+	var previousResults map[string]bool
+	if compare != "" {
+		previousResults, err = diff.LoadPreviousResults(compare)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[scion] error loading compare file: %v\n", err)
+			return 1
+		}
+	}
+
+	// Build final result list
+	var results []output.Result
+	for _, d := range allDomains {
+		entry := domainMap[d]
+
+		if scopeFile != "" && !filter.MatchesScope(d, scope) {
+			continue
+		}
+
+		r := output.Result{
+			Domain:   d,
+			Source:   entry.source,
+			Wildcard: wildcardDetected,
+		}
+
+		if verify && resolveMap != nil {
+			resolves := resolveMap[d]
+			r.Resolves = boolPtr(resolves)
+		}
+
+		if compare != "" && previousResults != nil {
+			isNew := !previousResults[d]
+			r.New = boolPtr(isNew)
+		}
+
+		results = append(results, r)
+	}
+
+	if len(results) == 0 {
+		if !silent {
+			fmt.Fprintf(os.Stderr, "[scion] No results found for %s\n", domain)
+		}
+		return 2
+	}
+
+	sort.Strings(sourcesUsed)
+	meta := output.Meta{
+		SourcesUsed:      sourcesUsed,
+		WildcardDetected: wildcardDetected,
+	}
+
+	if err := formatter.Write(w, results, domain, time.Now().UTC(), meta); err != nil {
+		fmt.Fprintf(os.Stderr, "[scion] error writing output: %v\n", err)
+		return 1
+	}
+
+	return 0
+}
+
+func buildSourceList(sourcesFlag string, silent bool) []sources.Source {
+	if sourcesFlag == "" {
+		var active []sources.Source
+		for _, s := range allSources {
+			if s.IsAvailable() {
+				active = append(active, s)
+			} else if !silent {
+				fmt.Fprintf(os.Stderr, "[scion] skipping %s: key not set\n", s.Name())
+			}
+		}
+		return active
+	}
+
+	ids := make(map[string]bool)
+	for _, id := range strings.Split(sourcesFlag, ",") {
+		ids[strings.TrimSpace(id)] = true
+	}
+
+	var active []sources.Source
+	for _, s := range allSources {
+		if ids[s.ID()] {
+			if !s.IsAvailable() {
+				if !silent {
+					fmt.Fprintf(os.Stderr, "[scion] skipping %s: key not set\n", s.Name())
+				}
+				continue
+			}
+			active = append(active, s)
+		}
+	}
+	return active
+}
+
+func printSourceTable() {
+	fmt.Println("Scion — available sources")
+	fmt.Println()
+	fmt.Printf("%-17s%-17s%-17s%s\n", "Source", "ID", "Key Required", "Status")
+	fmt.Println(strings.Repeat("─", 56))
+	for _, s := range allSources {
+		keyCol := "No"
+		if s.NeedsKey() {
+			keyCol = keyEnvVar(s.ID())
+		}
+		status := "✓ ready"
+		if !s.IsAvailable() {
+			status = "✗ key not set"
+		}
+		fmt.Printf("%-17s%-17s%-17s%s\n", s.Name(), s.ID(), keyCol, status)
 	}
 }
 
-type fetchFn func(string) ([]string, error)
-
-func httpGet(url string) ([]byte, error) {
-	res, err := http.Get(url)
-	if err != nil {
-		return []byte{}, err
+func keyEnvVar(id string) string {
+	switch id {
+	case "virustotal":
+		return "VT_API_KEY"
+	case "securitytrails":
+		return "ST_API_KEY"
+	case "shodan":
+		return "SHODAN_API_KEY"
+	case "facebook":
+		return "FB_APP_ID/SECRET"
 	}
-
-	raw, err := ioutil.ReadAll(res.Body)
-
-	res.Body.Close()
-	if err != nil {
-		return []byte{}, err
-	}
-
-	return raw, nil
+	return ""
 }
 
-func cleanDomain(d string) string {
-	d = strings.ToLower(d)
 
-	// no idea what this is, but we can't clean it ¯\_(ツ)_/¯
-	if len(d) < 2 {
-		return d
-	}
-
-	if d[0] == '*' || d[0] == '%' {
-		d = d[1:]
-	}
-
-	if d[0] == '.' {
-		d = d[1:]
-	}
-
-	return d
-
-}
-
-func fetchJSON(url string, wrapper interface{}) error {
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	dec := json.NewDecoder(resp.Body)
-
-	return dec.Decode(wrapper)
-}
+func boolPtr(b bool) *bool { return &b }
