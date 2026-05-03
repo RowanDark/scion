@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 )
 
 type VirusTotal struct{}
@@ -71,6 +72,7 @@ func (v *VirusTotal) Run(ctx context.Context, domain string) ([]string, error) {
 			break
 		}
 		cursor = page.Meta.Cursor
+		time.Sleep(250 * time.Millisecond)
 	}
 	return out, nil
 }
