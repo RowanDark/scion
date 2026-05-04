@@ -43,6 +43,11 @@ var allSources = []sources.Source{
 	&sources.SecurityTrails{},
 	&sources.Shodan{},
 	&sources.Facebook{},
+	&sources.CensysSource{},
+	&sources.GitHubSource{},
+	&sources.BufferOverSource{},
+	&sources.DNSRepoSource{},
+	&sources.FullHuntSource{},
 }
 
 func main() {
@@ -403,6 +408,14 @@ func keyEnvVar(id string) string {
 		return "FB_APP_ID/SECRET"
 	case "leakix":
 		return "LEAKIX_API_KEY"
+	case "censys":
+		return "CENSYS_API_ID/SECRET"
+	case "github":
+		return "GITHUB_TOKEN"
+	case "bufferover":
+		return "BUFFEROVER_KEY"
+	case "fullhunt":
+		return "FULLHUNT_KEY"
 	}
 	return ""
 }
