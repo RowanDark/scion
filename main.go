@@ -14,6 +14,7 @@ import (
 
 	"golang.org/x/term"
 
+	scionColor "github.com/RowanDark/scion/color"
 	scionDNS "github.com/RowanDark/scion/dns"
 	"github.com/RowanDark/scion/diff"
 	"github.com/RowanDark/scion/filter"
@@ -23,8 +24,7 @@ import (
 
 var version = "dev" // overridden by -ldflags at build time
 
-const banner = `
- ___  ___ _  ___  _ __
+const bannerText = ` ___  ___ _  ___  _ __
 / __|/ __| |/ _ \| '_ \
 \__ \ (__| | (_) | | | |
 |___/\___|_|\___/|_| |_|  v1.0
@@ -63,6 +63,7 @@ func run() int {
 		concurrency    int
 		dnsConcurrency int
 		silent         bool
+		noColor        bool
 		verify         bool
 		scopeFile      string
 		compare        string
@@ -80,6 +81,7 @@ func run() int {
 	flag.IntVar(&concurrency, "concurrency", 5, "Max concurrent source goroutines")
 	flag.IntVar(&dnsConcurrency, "dns-concurrency", 30, "Max concurrent DNS validation goroutines")
 	flag.BoolVar(&silent, "silent", false, "Suppress banner, warnings, and status messages")
+	flag.BoolVar(&noColor, "no-color", false, "Disable color output (auto-disabled when not a terminal)")
 	flag.BoolVar(&verify, "verify", false, "DNS-validate each result")
 	flag.StringVar(&scopeFile, "scope-file", "", "Path to scope file for filtering")
 	flag.StringVar(&compare, "compare", "", "Path to previous Scion output for diff")
@@ -93,13 +95,17 @@ func run() int {
 	}
 	flag.Parse()
 
+	if noColor {
+		scionColor.Disable()
+	}
+
 	if printVersion {
 		fmt.Println(version)
 		return 0
 	}
 
 	if !silent {
-		fmt.Fprint(os.Stderr, banner)
+		fmt.Fprint(os.Stderr, scionColor.Cyan(bannerText))
 	}
 
 	if listSources {
@@ -134,7 +140,7 @@ func run() int {
 
 	formatter, err := output.Get(outputFmt)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[scion] error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s error: %v\n", scionColor.Red("[scion]"), err)
 		return 1
 	}
 
@@ -142,7 +148,7 @@ func run() int {
 	if outFile != "" {
 		f, err := os.Create(outFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[scion] error: cannot open output file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s error: cannot open output file: %v\n", scionColor.Red("[scion]"), err)
 			return 1
 		}
 		defer f.Close()
@@ -164,6 +170,14 @@ func run() int {
 	return exitCode
 }
 
+type sourceRunResult struct {
+	sourceID   string
+	sourceName string
+	domains    []string
+	err        error
+	duration   time.Duration
+}
+
 func runDomain(
 	domain string,
 	w io.Writer,
@@ -173,10 +187,12 @@ func runDomain(
 	scopeFile, compare string,
 	concurrency, dnsConcurrency, timeoutSecs int,
 ) int {
+	start := time.Now()
+
 	// Build source list
 	activeSources := buildSourceList(sourcesFlag, silent)
 	if len(activeSources) == 0 {
-		fmt.Fprintln(os.Stderr, "[scion] error: no sources available")
+		fmt.Fprintln(os.Stderr, scionColor.Red("[scion]")+" error: no sources available")
 		return 1
 	}
 
@@ -189,28 +205,23 @@ func runDomain(
 		if err == nil && wc {
 			wildcardDetected = true
 			if !silent {
-				fmt.Fprintf(os.Stderr, "[WARN] Wildcard DNS detected for %s — validation results may be noisy\n", domain)
+				fmt.Fprintf(os.Stderr, "%s Wildcard DNS detected for %s — validation results may be noisy\n",
+					scionColor.Yellow("[WARN]"), domain)
 			}
 		}
 	}
 
-	// Run sources concurrently
-	type sourceResult struct {
+	// Channels
+	type rawResult struct {
 		source string
 		domain string
 	}
-	resultCh := make(chan sourceResult, 1000)
+	resultCh := make(chan rawResult, 1000)
+	statusCh := make(chan sourceRunResult, len(activeSources))
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 
-	sourcesUsed := make([]string, 0, len(activeSources))
-	var sourcesMu sync.Mutex
-
-	// Drain resultCh in a dedicated goroutine that starts before any source is
-	// launched. This prevents deadlock: without concurrent draining, the channel
-	// buffer can fill while the main goroutine is still blocked on the semaphore
-	// launching sources, causing source goroutines to block on send and never
-	// release the semaphore — a classic channel/semaphore deadlock.
+	// Drain domain results concurrently to prevent deadlock.
 	type domainEntry struct {
 		source string
 	}
@@ -236,6 +247,32 @@ func runDomain(
 		}
 	}()
 
+	// Rolling status printer — reads from statusCh and prints as sources finish.
+	var allSourceResults []sourceRunResult
+	var statusWg sync.WaitGroup
+	statusWg.Add(1)
+	go func() {
+		defer statusWg.Done()
+		for sr := range statusCh {
+			allSourceResults = append(allSourceResults, sr)
+			if silent {
+				continue
+			}
+			if sr.err != nil {
+				fmt.Fprintf(os.Stderr, "%s %-16s %s\n",
+					scionColor.Red("["+sr.sourceID+"]"),
+					scionColor.Red("✗ error"),
+					scionColor.Red("— "+sr.err.Error()))
+			} else {
+				count := len(sr.domains)
+				fmt.Fprintf(os.Stderr, "%s %-16s %s\n",
+					scionColor.Green("["+sr.sourceID+"]"),
+					scionColor.Green("✓ done"),
+					fmt.Sprintf("— %d result%s", count, plural(count)))
+			}
+		}
+	}()
+
 	for _, src := range activeSources {
 		src := src
 		sem <- struct{}{}
@@ -251,31 +288,33 @@ func runDomain(
 			ctx, cancel := context.WithTimeout(context.Background(), srcTimeout)
 			defer cancel()
 
+			srcStart := time.Now()
 			domains, err := src.Run(ctx, domain)
+			elapsed := time.Since(srcStart)
+
+			statusCh <- sourceRunResult{
+				sourceID:   src.ID(),
+				sourceName: src.Name(),
+				domains:    domains,
+				err:        err,
+				duration:   elapsed,
+			}
+
 			if err != nil {
-				if !silent {
-					fmt.Fprintf(os.Stderr, "[scion] %s: %v\n", src.ID(), err)
-				}
 				return
 			}
 
-			sourcesMu.Lock()
-			sourcesUsed = append(sourcesUsed, src.ID())
-			sourcesMu.Unlock()
-
 			for _, d := range domains {
-				resultCh <- sourceResult{source: src.ID(), domain: d}
+				resultCh <- rawResult{source: src.ID(), domain: d}
 			}
 		}()
 	}
 
-	// Phase 1 complete: all sources launched. Wait for every source goroutine to
-	// finish, close the channel, then wait for the drain goroutine to flush all
-	// remaining results. Post-processing (validation, filtering, diff) only begins
-	// after drainWg.Wait() returns, guaranteeing a complete result set.
 	wg.Wait()
 	close(resultCh)
+	close(statusCh)
 	drainWg.Wait()
+	statusWg.Wait()
 
 	// Sort for deterministic output
 	allDomains := make([]string, 0, len(domainMap))
@@ -284,7 +323,7 @@ func runDomain(
 	}
 	sort.Strings(allDomains)
 
-	// DNS validation uses dedicated concurrency setting
+	// DNS validation
 	var resolveMap map[string]bool
 	if verify {
 		resolveMap = scionDNS.ValidateDomains(allDomains, dnsConcurrency, timeout)
@@ -296,7 +335,7 @@ func runDomain(
 	if scopeFile != "" {
 		scope, err = filter.LoadScope(scopeFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[scion] error loading scope file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s error loading scope file: %v\n", scionColor.Red("[scion]"), err)
 			return 1
 		}
 	}
@@ -306,12 +345,14 @@ func runDomain(
 	if compare != "" {
 		previousResults, err = diff.LoadPreviousResults(compare)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[scion] error loading compare file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s error loading compare file: %v\n", scionColor.Red("[scion]"), err)
 			return 1
 		}
 	}
 
 	// Build final result list
+	sourcesUsed := make([]string, 0)
+	sourcesUsedSet := make(map[string]bool)
 	var results []output.Result
 	for _, d := range allDomains {
 		entry := domainMap[d]
@@ -337,11 +378,15 @@ func runDomain(
 		}
 
 		results = append(results, r)
+		if !sourcesUsedSet[entry.source] {
+			sourcesUsedSet[entry.source] = true
+			sourcesUsed = append(sourcesUsed, entry.source)
+		}
 	}
 
 	if len(results) == 0 {
 		if !silent {
-			fmt.Fprintf(os.Stderr, "[scion] No results found for %s\n", domain)
+			fmt.Fprintf(os.Stderr, "%s No results found for %s\n", scionColor.Yellow("[scion]"), domain)
 		}
 		return 2
 	}
@@ -353,11 +398,44 @@ func runDomain(
 	}
 
 	if err := formatter.Write(w, results, domain, time.Now().UTC(), meta); err != nil {
-		fmt.Fprintf(os.Stderr, "[scion] error writing output: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s error writing output: %v\n", scionColor.Red("[scion]"), err)
 		return 1
 	}
 
+	if !silent {
+		printSummary(results, allSourceResults, time.Since(start))
+	}
+
 	return 0
+}
+
+func printSummary(results []output.Result, sourceResults []sourceRunResult, elapsed time.Duration) {
+	ok := 0
+	failed := 0
+	for _, sr := range sourceResults {
+		if sr.err == nil {
+			ok++
+		} else {
+			failed++
+		}
+	}
+
+	sep := scionColor.Cyan(strings.Repeat("─", 47))
+	fmt.Fprintf(os.Stderr, "\n%s\n", sep)
+	fmt.Fprintf(os.Stderr, "  %-10s %d queried · %d ok · %d failed\n",
+		scionColor.Cyan("Sources"), len(sourceResults), ok, failed)
+	fmt.Fprintf(os.Stderr, "  %-10s %d unique\n",
+		scionColor.Cyan("Results"), len(results))
+	fmt.Fprintf(os.Stderr, "  %-10s %s\n",
+		scionColor.Cyan("Time"), elapsed.Round(time.Millisecond).String())
+	fmt.Fprintf(os.Stderr, "%s\n\n", sep)
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func buildSourceList(sourcesFlag string, silent bool) []sources.Source {
@@ -367,7 +445,8 @@ func buildSourceList(sourcesFlag string, silent bool) []sources.Source {
 			if s.IsAvailable() {
 				active = append(active, s)
 			} else if !silent {
-				fmt.Fprintf(os.Stderr, "[scion] skipping %s: key not set\n", s.Name())
+				fmt.Fprintf(os.Stderr, "%s skipping %s: key not set\n",
+					scionColor.Yellow("[scion]"), scionColor.Yellow(s.Name()))
 			}
 		}
 		return active
@@ -383,7 +462,8 @@ func buildSourceList(sourcesFlag string, silent bool) []sources.Source {
 		if ids[s.ID()] {
 			if !s.IsAvailable() {
 				if !silent {
-					fmt.Fprintf(os.Stderr, "[scion] skipping %s: key not set\n", s.Name())
+					fmt.Fprintf(os.Stderr, "%s skipping %s: key not set\n",
+						scionColor.Yellow("[scion]"), scionColor.Yellow(s.Name()))
 				}
 				continue
 			}
