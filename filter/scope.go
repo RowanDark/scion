@@ -3,6 +3,7 @@ package filter
 import (
 	"bufio"
 	"os"
+	"path"
 	"strings"
 )
 
@@ -28,16 +29,20 @@ func LoadScope(path string) ([]string, error) {
 }
 
 // MatchesScope returns true if domain matches any entry in scope.
-// Entries may be exact ("admin.example.com") or wildcard ("*.example.com").
+// Supported patterns: exact match, simple wildcard (*. prefix), or glob (*.qa*.example.com).
 func MatchesScope(domain string, scope []string) bool {
 	domain = strings.ToLower(domain)
 	for _, entry := range scope {
+		if domain == entry {
+			return true
+		}
 		if strings.HasPrefix(entry, "*.") {
 			suffix := entry[1:] // ".example.com"
 			if strings.HasSuffix(domain, suffix) {
 				return true
 			}
-		} else if domain == entry {
+		}
+		if matched, err := path.Match(entry, domain); err == nil && matched {
 			return true
 		}
 	}
