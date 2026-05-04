@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math/rand"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -41,8 +41,11 @@ func (c *CrtSh) Run(ctx context.Context, domain string) ([]string, error) {
 }
 
 func (c *CrtSh) fetch(ctx context.Context, domain string) ([]string, error) {
-	url := fmt.Sprintf("https://crt.sh/?q=%%25.%s&output=json&excluded=expired", domain)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	reqURL := fmt.Sprintf("https://crt.sh/?q=%%25.%s&output=json&excluded=expired", domain)
+	if os.Getenv("SCION_DEBUG") != "" {
+		fmt.Fprintf(os.Stderr, "[DEBUG] crtsh URL: %s\n", reqURL)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -61,10 +64,13 @@ func (c *CrtSh) fetch(ctx context.Context, domain string) ([]string, error) {
 		return nil, fmt.Errorf("crtsh: upstream unavailable (HTTP %d) — crt.sh may be experiencing an outage", resp.StatusCode)
 	}
 
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("crtsh: unexpected status code %d", resp.StatusCode)
+	}
+
 	ct := resp.Header.Get("Content-Type")
 	if !strings.Contains(ct, "application/json") {
-		preview, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
-		return nil, fmt.Errorf("crtsh: unexpected content-type %q: %s", ct, strings.TrimSpace(string(preview)))
+		return nil, fmt.Errorf("crtsh: unexpected content-type %q", ct)
 	}
 
 	var results []struct {
