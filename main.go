@@ -206,6 +206,36 @@ func runDomain(
 	sourcesUsed := make([]string, 0, len(activeSources))
 	var sourcesMu sync.Mutex
 
+	// Drain resultCh in a dedicated goroutine that starts before any source is
+	// launched. This prevents deadlock: without concurrent draining, the channel
+	// buffer can fill while the main goroutine is still blocked on the semaphore
+	// launching sources, causing source goroutines to block on send and never
+	// release the semaphore — a classic channel/semaphore deadlock.
+	type domainEntry struct {
+		source string
+	}
+	domainMap := make(map[string]domainEntry)
+	var domainMapMu sync.Mutex
+	var drainWg sync.WaitGroup
+	drainWg.Add(1)
+	go func() {
+		defer drainWg.Done()
+		for r := range resultCh {
+			d := strings.ToLower(r.domain)
+			if d == "" {
+				continue
+			}
+			if subsOnly && !strings.HasSuffix(d, "."+domain) && d != domain {
+				continue
+			}
+			domainMapMu.Lock()
+			if _, exists := domainMap[d]; !exists {
+				domainMap[d] = domainEntry{source: r.source}
+			}
+			domainMapMu.Unlock()
+		}
+	}()
+
 	for _, src := range activeSources {
 		src := src
 		sem <- struct{}{}
@@ -239,28 +269,13 @@ func runDomain(
 		}()
 	}
 
-	go func() {
-		wg.Wait()
-		close(resultCh)
-	}()
-
-	// Collect and deduplicate
-	type domainEntry struct {
-		source string
-	}
-	domainMap := make(map[string]domainEntry)
-	for r := range resultCh {
-		d := strings.ToLower(r.domain)
-		if d == "" {
-			continue
-		}
-		if subsOnly && !strings.HasSuffix(d, "."+domain) && d != domain {
-			continue
-		}
-		if _, exists := domainMap[d]; !exists {
-			domainMap[d] = domainEntry{source: r.source}
-		}
-	}
+	// Phase 1 complete: all sources launched. Wait for every source goroutine to
+	// finish, close the channel, then wait for the drain goroutine to flush all
+	// remaining results. Post-processing (validation, filtering, diff) only begins
+	// after drainWg.Wait() returns, guaranteeing a complete result set.
+	wg.Wait()
+	close(resultCh)
+	drainWg.Wait()
 
 	// Sort for deterministic output
 	allDomains := make([]string, 0, len(domainMap))
