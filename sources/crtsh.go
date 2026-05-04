@@ -57,6 +57,10 @@ func (c *CrtSh) fetch(ctx context.Context, domain string) ([]string, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == 502 || resp.StatusCode == 503 {
+		return nil, fmt.Errorf("crtsh: upstream unavailable (HTTP %d) — crt.sh may be experiencing an outage", resp.StatusCode)
+	}
+
 	ct := resp.Header.Get("Content-Type")
 	if !strings.Contains(ct, "application/json") {
 		preview, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
