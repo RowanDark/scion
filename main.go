@@ -441,13 +441,20 @@ func plural(n int) string {
 func buildSourceList(sourcesFlag string, silent bool) []sources.Source {
 	if sourcesFlag == "" {
 		var active []sources.Source
+		skipped := 0
 		for _, s := range allSources {
 			if s.IsAvailable() {
 				active = append(active, s)
-			} else if !silent {
-				fmt.Fprintf(os.Stderr, "%s skipping %s: key not set\n",
-					scionColor.Yellow("[scion]"), scionColor.Yellow(s.Name()))
+			} else {
+				if !silent {
+					fmt.Fprintf(os.Stderr, "%s skipping %s: key not set\n",
+						scionColor.Yellow("[scion]"), scionColor.Yellow(s.Name()))
+				}
+				skipped++
 			}
+		}
+		if !silent && skipped > 0 {
+			fmt.Fprintln(os.Stderr) // spacing after skip messages, before rolling log
 		}
 		return active
 	}
@@ -458,6 +465,7 @@ func buildSourceList(sourcesFlag string, silent bool) []sources.Source {
 	}
 
 	var active []sources.Source
+	skipped := 0
 	for _, s := range allSources {
 		if ids[s.ID()] {
 			if !s.IsAvailable() {
@@ -465,19 +473,23 @@ func buildSourceList(sourcesFlag string, silent bool) []sources.Source {
 					fmt.Fprintf(os.Stderr, "%s skipping %s: key not set\n",
 						scionColor.Yellow("[scion]"), scionColor.Yellow(s.Name()))
 				}
+				skipped++
 				continue
 			}
 			active = append(active, s)
 		}
 	}
+	if !silent && skipped > 0 {
+		fmt.Fprintln(os.Stderr) // spacing after skip messages, before rolling log
+	}
 	return active
 }
 
 func printSourceTable() {
-	fmt.Println("Scion — available sources")
-	fmt.Println()
-	fmt.Printf("%-17s%-17s%-17s%s\n", "Source", "ID", "Key Required", "Status")
-	fmt.Println(strings.Repeat("─", 56))
+	fmt.Fprintln(os.Stderr, "Scion — available sources")
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintf(os.Stderr, "%-17s%-17s%-17s%s\n", "Source", "ID", "Key Required", "Status")
+	fmt.Fprintln(os.Stderr, strings.Repeat("─", 56))
 	for _, s := range allSources {
 		keyCol := "No"
 		if s.NeedsKey() {
@@ -487,7 +499,7 @@ func printSourceTable() {
 		if !s.IsAvailable() {
 			status = "✗ key not set"
 		}
-		fmt.Printf("%-17s%-17s%-17s%s\n", s.Name(), s.ID(), keyCol, status)
+		fmt.Fprintf(os.Stderr, "%-17s%-17s%-17s%s\n", s.Name(), s.ID(), keyCol, status)
 	}
 }
 
