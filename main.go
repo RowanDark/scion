@@ -43,7 +43,7 @@ var allSources = []sources.Source{
 	&sources.VirusTotal{},
 	&sources.SecurityTrails{},
 	&sources.Shodan{},
-	&sources.Facebook{},
+	&sources.URLScanSource{},
 	&sources.CensysSource{},
 	&sources.GitHubSource{},
 	&sources.BufferOverSource{},
@@ -527,8 +527,8 @@ func keyEnvVar(id string) string {
 		return "ST_API_KEY"
 	case "shodan":
 		return "SHODAN_API_KEY"
-	case "facebook":
-		return "FB_APP_ID/SECRET"
+	case "urlscan":
+		return "URLSCAN_API_KEY"
 	case "leakix":
 		return "LEAKIX_API_KEY"
 	case "censys":

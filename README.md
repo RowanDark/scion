@@ -119,12 +119,12 @@ Set the relevant environment variable to enable. Sources are silently skipped if
 | VirusTotal | `virustotal` | `VT_API_KEY` | [virustotal.com](https://www.virustotal.com) |
 | SecurityTrails | `securitytrails` | `ST_API_KEY` | [securitytrails.com](https://securitytrails.com) |
 | Shodan | `shodan` | `SHODAN_API_KEY` | [shodan.io](https://shodan.io) |
-| Facebook CT | `facebook` | `FB_APP_ID` + `FB_APP_SECRET` | [developers.facebook.com](https://developers.facebook.com) |
 | LeakIX | `leakix` | `LEAKIX_API_KEY` | [leakix.net](https://leakix.net) |
 | Censys | `censys` | `CENSYS_API_ID` + `CENSYS_API_SECRET` | [search.censys.io/register](https://search.censys.io/register) |
 | GitHub | `github` | `GITHUB_TOKEN` | [github.com/settings/tokens](https://github.com/settings/tokens) |
 | BufferOver | `bufferover` | `BUFFEROVER_KEY` | [tls.bufferover.run](https://tls.bufferover.run) |
 | FullHunt | `fullhunt` | `FULLHUNT_KEY` | [fullhunt.io](https://fullhunt.io) |
+| URLScan.io | `urlscan` | `URLSCAN_API_KEY` | [urlscan.io](https://urlscan.io) |
 
 ---
 
@@ -142,28 +142,21 @@ export CENSYS_API_SECRET="your_api_secret"
 export GITHUB_TOKEN="your_token_here"
 export BUFFEROVER_KEY="your_key_here"
 export FULLHUNT_KEY="your_key_here"
-export FB_APP_ID="your_app_id"
-export FB_APP_SECRET="your_app_secret"
+export URLSCAN_API_KEY="your_key_here"
 ```
 
-### Facebook CT Setup
+### URLScan.io Setup
 
-Facebook CT requires a free Facebook Developer app. No app review is required — certificate transparency data is public.
+URLScan.io has a free tier with 1,000 searches per day — no payment required.
 
-1. Go to [developers.facebook.com](https://developers.facebook.com) and log in
-2. Click **My Apps** → **Create App**
-3. Choose app type: **Other** → **None**
-4. Give it any name (e.g. `scion-ct`) and create the app
-5. Go to **Settings** → **Basic**
-6. Copy your **App ID** and **App Secret**
-7. Export both as environment variables:
+1. Go to https://urlscan.io and create a free account
+2. Go to Settings → API Keys
+3. Click New Key, give it a name (e.g. `scion`)
+4. Copy the key and export it:
 
 ```bash
-export FB_APP_ID="your_app_id"
-export FB_APP_SECRET="your_app_secret"
+export URLSCAN_API_KEY="your_key_here"
 ```
-
-Scion handles the OAuth token exchange automatically — you only need the App ID and Secret.
 
 ### GitHub Token Setup
 
@@ -281,7 +274,7 @@ LeakIX           leakix           LEAKIX_API_KEY        ✗ key not set
 VirusTotal       virustotal       VT_API_KEY            ✗ key not set
 SecurityTrails   securitytrails   ST_API_KEY            ✗ key not set
 Shodan           shodan           SHODAN_API_KEY        ✗ key not set
-Facebook CT      facebook         FB_APP_ID/SECRET      ✗ key not set
+URLScan.io       urlscan          URLSCAN_API_KEY       ✗ key not set
 Censys           censys           CENSYS_API_ID/SECRET  ✗ key not set
 GitHub           github           GITHUB_TOKEN          ✗ key not set
 BufferOver       bufferover       BUFFEROVER_KEY        ✗ key not set
