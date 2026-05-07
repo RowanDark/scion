@@ -31,10 +31,12 @@ func (s *GitHubSource) Run(ctx context.Context, domain string) ([]string, error)
 	seen := make(map[string]bool)
 	var out []string
 
+	query := url.QueryEscape(domain + " in:file")
+
 	for page := 1; page <= 10; page++ {
 		apiURL := fmt.Sprintf(
 			"https://api.github.com/search/code?q=%s&per_page=100&page=%d",
-			url.QueryEscape(domain), page,
+			query, page,
 		)
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
@@ -50,12 +52,25 @@ func (s *GitHubSource) Run(ctx context.Context, domain string) ([]string, error)
 			return out, err
 		}
 
-		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
+		remaining := resp.Header.Get("X-RateLimit-Remaining")
+		if remaining == "0" {
 			resp.Body.Close()
-			return out, fmt.Errorf("github: auth error (status %d)", resp.StatusCode)
+			return out, fmt.Errorf("github: rate limit exhausted — wait before retrying")
+		}
+
+		if resp.StatusCode == 403 {
+			retryAfter := resp.Header.Get("Retry-After")
+			resp.Body.Close()
+			if retryAfter != "" {
+				return out, fmt.Errorf("github: secondary rate limit hit — retry after %s seconds", retryAfter)
+			}
+			return out, fmt.Errorf("github: forbidden (403) — query may be too broad or token lacks required scope")
+		}
+		if resp.StatusCode == 401 {
+			resp.Body.Close()
+			return out, fmt.Errorf("github: unauthorized (401) — check GITHUB_TOKEN is set correctly")
 		}
 		if resp.StatusCode == 422 {
-			// GitHub returns 422 when pagination exceeds available results
 			resp.Body.Close()
 			break
 		}
