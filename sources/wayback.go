@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 type Wayback struct{}
@@ -18,9 +20,11 @@ func (w *Wayback) IsAvailable() bool   { return true }
 func (w *Wayback) DefaultTimeout() int { return 90 }
 
 func (w *Wayback) Run(ctx context.Context, domain string) ([]string, error) {
+	fromYear := time.Now().Year() - 3
 	apiURL := fmt.Sprintf(
-		"https://web.archive.org/cdx/search/cdx?url=*.%s&output=json&fl=original&collapse=urlkey&limit=10000",
+		"https://web.archive.org/cdx/search/cdx?url=*.%s&output=json&fl=original&collapse=urlkey&limit=10000&from=%d0101",
 		domain,
+		fromYear,
 	)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
@@ -34,9 +38,22 @@ func (w *Wayback) Run(ctx context.Context, domain string) ([]string, error) {
 	}
 	defer resp.Body.Close()
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("wayback: failed to read response: %v", err)
+	}
+
+	bodyStr := strings.TrimSpace(string(body))
+	if strings.HasPrefix(bodyStr, "<") {
+		return nil, fmt.Errorf(
+			"wayback: received HTML instead of JSON — CDX API may be overloaded or throttling this IP. " +
+				"Try again later or use --timeout to extend the deadline.",
+		)
+	}
+
 	var rows [][]string
-	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
-		return nil, fmt.Errorf("wayback: decode error: %w", err)
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return nil, fmt.Errorf("wayback: failed to parse response: %v", err)
 	}
 
 	seen := make(map[string]bool)
@@ -46,7 +63,6 @@ func (w *Wayback) Run(ctx context.Context, domain string) ([]string, error) {
 			continue
 		}
 		raw := row[0]
-		// skip the header row
 		if raw == "original" {
 			continue
 		}

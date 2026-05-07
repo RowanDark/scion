@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -258,7 +259,14 @@ func runDomain(
 			if silent {
 				continue
 			}
-			if sr.err != nil {
+			var partialErr *sources.PartialResultError
+			if sr.err != nil && errors.As(sr.err, &partialErr) {
+				count := len(sr.domains)
+				fmt.Fprintf(os.Stderr, "%s %-16s %s\n",
+					scionColor.Yellow("["+sr.sourceID+"]"),
+					scionColor.Yellow("⚠ partial"),
+					fmt.Sprintf("— %d result%s (%s)", count, plural(count), partialErr.Reason))
+			} else if sr.err != nil {
 				fmt.Fprintf(os.Stderr, "%s %-16s %s\n",
 					scionColor.Red("["+sr.sourceID+"]"),
 					scionColor.Red("✗ error"),
@@ -300,7 +308,8 @@ func runDomain(
 				duration:   elapsed,
 			}
 
-			if err != nil {
+			var partialErr *sources.PartialResultError
+			if err != nil && !errors.As(err, &partialErr) {
 				return
 			}
 
@@ -412,9 +421,13 @@ func runDomain(
 func printSummary(results []output.Result, sourceResults []sourceRunResult, elapsed time.Duration) {
 	ok := 0
 	failed := 0
+	partial := 0
 	for _, sr := range sourceResults {
+		var partialErr *sources.PartialResultError
 		if sr.err == nil {
 			ok++
+		} else if errors.As(sr.err, &partialErr) {
+			partial++
 		} else {
 			failed++
 		}
@@ -422,8 +435,11 @@ func printSummary(results []output.Result, sourceResults []sourceRunResult, elap
 
 	sep := scionColor.Cyan(strings.Repeat("─", 47))
 	fmt.Fprintf(os.Stderr, "\n%s\n", sep)
-	fmt.Fprintf(os.Stderr, "  %-10s %d queried · %d ok · %d failed\n",
-		scionColor.Cyan("Sources"), len(sourceResults), ok, failed)
+	sourceLine := fmt.Sprintf("%d queried · %d ok · %d failed", len(sourceResults), ok, failed)
+	if partial > 0 {
+		sourceLine += fmt.Sprintf(" · %d partial", partial)
+	}
+	fmt.Fprintf(os.Stderr, "  %-10s %s\n", scionColor.Cyan("Sources"), sourceLine)
 	fmt.Fprintf(os.Stderr, "  %-10s %d unique\n",
 		scionColor.Cyan("Results"), len(results))
 	fmt.Fprintf(os.Stderr, "  %-10s %s\n",
