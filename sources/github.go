@@ -29,7 +29,9 @@ func (s *GitHubSource) Run(ctx context.Context, domain string) ([]string, error)
 	)
 
 	seen := make(map[string]bool)
-	var out []string
+	var allResults []string
+	var partialStop bool
+	var partialReason string
 
 	query := url.QueryEscape(domain + " in:file")
 
@@ -41,7 +43,12 @@ func (s *GitHubSource) Run(ctx context.Context, domain string) ([]string, error)
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 		if err != nil {
-			return out, err
+			if page == 1 {
+				return nil, err
+			}
+			partialStop = true
+			partialReason = fmt.Sprintf("stopped at page %d: %v", page, err)
+			break
 		}
 		req.Header.Set("Authorization", "token "+token)
 		req.Header.Set("Accept", "application/vnd.github.text-match+json")
@@ -49,26 +56,41 @@ func (s *GitHubSource) Run(ctx context.Context, domain string) ([]string, error)
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			return out, err
+			if page == 1 {
+				return nil, err
+			}
+			partialStop = true
+			partialReason = fmt.Sprintf("stopped at page %d: %v", page, err)
+			break
 		}
 
 		remaining := resp.Header.Get("X-RateLimit-Remaining")
 		if remaining == "0" {
 			resp.Body.Close()
-			return out, fmt.Errorf("github: rate limit exhausted — wait before retrying")
+			if len(allResults) == 0 {
+				return nil, fmt.Errorf("github: rate limit exhausted — wait before retrying")
+			}
+			partialStop = true
+			partialReason = fmt.Sprintf("stopped at page %d: rate limit exhausted", page)
+			break
 		}
 
 		if resp.StatusCode == 403 {
 			retryAfter := resp.Header.Get("Retry-After")
 			resp.Body.Close()
-			if retryAfter != "" {
-				return out, fmt.Errorf("github: secondary rate limit hit — retry after %s seconds", retryAfter)
+			if len(allResults) == 0 {
+				if retryAfter != "" {
+					return nil, fmt.Errorf("github: secondary rate limit hit — retry after %s seconds", retryAfter)
+				}
+				return nil, fmt.Errorf("github: forbidden (403) — query may be too broad or token lacks required scope")
 			}
-			return out, fmt.Errorf("github: forbidden (403) — query may be too broad or token lacks required scope")
+			partialStop = true
+			partialReason = fmt.Sprintf("stopped at page %d: secondary rate limit (403)", page)
+			break
 		}
 		if resp.StatusCode == 401 {
 			resp.Body.Close()
-			return out, fmt.Errorf("github: unauthorized (401) — check GITHUB_TOKEN is set correctly")
+			return nil, fmt.Errorf("github: unauthorized (401) — check GITHUB_TOKEN is set correctly")
 		}
 		if resp.StatusCode == 422 {
 			resp.Body.Close()
@@ -76,7 +98,12 @@ func (s *GitHubSource) Run(ctx context.Context, domain string) ([]string, error)
 		}
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
-			return out, fmt.Errorf("github: unexpected status %d", resp.StatusCode)
+			if page == 1 {
+				return nil, fmt.Errorf("github: unexpected status %d", resp.StatusCode)
+			}
+			partialStop = true
+			partialReason = fmt.Sprintf("stopped at page %d: unexpected status %d", page, resp.StatusCode)
+			break
 		}
 
 		var result struct {
@@ -88,7 +115,12 @@ func (s *GitHubSource) Run(ctx context.Context, domain string) ([]string, error)
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 			resp.Body.Close()
-			return out, fmt.Errorf("github: decode error: %w", err)
+			if page == 1 {
+				return nil, fmt.Errorf("github: decode error: %w", err)
+			}
+			partialStop = true
+			partialReason = fmt.Sprintf("stopped at page %d: decode error: %v", page, err)
+			break
 		}
 		resp.Body.Close()
 
@@ -102,14 +134,26 @@ func (s *GitHubSource) Run(ctx context.Context, domain string) ([]string, error)
 					name := cleanDomain(found)
 					if name != "" && !seen[name] {
 						seen[name] = true
-						out = append(out, name)
+						allResults = append(allResults, name)
 					}
 				}
 			}
 		}
 
+		if len(result.Items) < 100 {
+			break
+		}
+
 		time.Sleep(2 * time.Second)
 	}
 
-	return out, nil
+	if partialStop && len(allResults) > 0 {
+		return allResults, &PartialResultError{Reason: partialReason}
+	}
+
+	if partialStop {
+		return nil, fmt.Errorf("github: %s", partialReason)
+	}
+
+	return allResults, nil
 }
