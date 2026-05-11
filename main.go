@@ -28,8 +28,6 @@ var version = "dev" // overridden by -ldflags at build time
 const bannerText = ` ___  ___ _  ___  _ __
 / __|/ __| |/ _ \| '_ \
 \__ \ (__| | (_) | | | |
-|___/\___|_|\___/|_| |_|  v1.0
-
 `
 
 var allSources = []sources.Source{
@@ -43,7 +41,6 @@ var allSources = []sources.Source{
 	&sources.DNSDumpsterSource{},
 	&sources.RobtexSource{},
 	&sources.AnubisSource{},
-	&sources.DigitorusSource{},
 	&sources.VirusTotal{},
 	&sources.SecurityTrails{},
 	&sources.Shodan{},
@@ -114,6 +111,7 @@ func run() int {
 
 	if !silent {
 		fmt.Fprint(os.Stderr, scionColor.Cyan(bannerText))
+		fmt.Fprintf(os.Stderr, "|___/\\___|_|\\___/|_| |_|  %s\n\n", version)
 	}
 
 	if listSources {
@@ -511,8 +509,8 @@ func buildSourceList(sourcesFlag string, silent bool) []sources.Source {
 func printSourceTable() {
 	fmt.Fprintln(os.Stderr, "Scion — available sources")
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintf(os.Stderr, "%-17s%-17s%-17s%s\n", "Source", "ID", "Key Required", "Status")
-	fmt.Fprintln(os.Stderr, strings.Repeat("─", 56))
+	fmt.Fprintf(os.Stderr, "%-17s%-17s%-22s%s\n", "Source", "ID", "Key Required", "Status")
+	fmt.Fprintln(os.Stderr, strings.Repeat("─", 62))
 	for _, s := range allSources {
 		keyCol := "No"
 		if s.NeedsKey() {
@@ -522,7 +520,7 @@ func printSourceTable() {
 		if !s.IsAvailable() {
 			status = "✗ key not set"
 		}
-		fmt.Fprintf(os.Stderr, "%-17s%-17s%-17s%s\n", s.Name(), s.ID(), keyCol, status)
+		fmt.Fprintf(os.Stderr, "%-17s%-17s%-22s%s\n", s.Name(), s.ID(), keyCol, status)
 	}
 }
 
@@ -546,6 +544,12 @@ func keyEnvVar(id string) string {
 		return "BUFFEROVER_KEY"
 	case "fullhunt":
 		return "FULLHUNT_KEY"
+	case "netlas":
+		return "NETLAS_API_KEY"
+	case "redhuntlabs":
+		return "REDHUNTLABS_API_KEY"
+	case "bevigil":
+		return "BEVIGIL_API_KEY"
 	}
 	return ""
 }
