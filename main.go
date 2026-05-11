@@ -40,6 +40,10 @@ var allSources = []sources.Source{
 	&sources.RapidDNS{},
 	&sources.AlienVault{},
 	&sources.LeakIX{},
+	&sources.DNSDumpsterSource{},
+	&sources.RobtexSource{},
+	&sources.AnubisSource{},
+	&sources.DigitorusSource{},
 	&sources.VirusTotal{},
 	&sources.SecurityTrails{},
 	&sources.Shodan{},
@@ -49,6 +53,9 @@ var allSources = []sources.Source{
 	&sources.BufferOverSource{},
 	&sources.DNSRepoSource{},
 	&sources.FullHuntSource{},
+	&sources.NetlasSource{},
+	&sources.RedHuntLabsSource{},
+	&sources.BeVigilSource{},
 }
 
 func main() {
