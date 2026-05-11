@@ -109,6 +109,10 @@ cat domains.txt | scion --subs-only
 | RapidDNS | `rapiddns` | Passive DNS dataset |
 | AlienVault OTX | `alienvault` | Open threat exchange passive DNS |
 | DNSRepo | `dnsrepo` | Public passive DNS dataset |
+| DNSDumpster | `dnsdumpster` | Passive DNS and crawl data |
+| Robtex | `robtex` | Passive DNS historical records |
+| Anubis | `anubis` | Lightweight passive DNS |
+| Digitorus | `digitorus` | CT log aggregator |
 
 ### API-Backed (optional)
 
@@ -125,6 +129,9 @@ Set the relevant environment variable to enable. Sources are silently skipped if
 | BufferOver | `bufferover` | `BUFFEROVER_KEY` | [tls.bufferover.run](https://tls.bufferover.run) |
 | FullHunt | `fullhunt` | `FULLHUNT_KEY` | [fullhunt.io](https://fullhunt.io) |
 | URLScan.io | `urlscan` | `URLSCAN_API_KEY` | [urlscan.io](https://urlscan.io) |
+| Netlas | `netlas` | `NETLAS_API_KEY` | [netlas.io](https://netlas.io) |
+| RedHuntLabs | `redhuntlabs` | `REDHUNTLABS_API_KEY` | [reconapi.redhuntlabs.com](https://reconapi.redhuntlabs.com) |
+| BeVigil | `bevigil` | `BEVIGIL_API_KEY` | [bevigil.com/osint-api](https://bevigil.com/osint-api) |
 
 ---
 
@@ -143,6 +150,9 @@ export GITHUB_TOKEN="your_token_here"
 export BUFFEROVER_KEY="your_key_here"
 export FULLHUNT_KEY="your_key_here"
 export URLSCAN_API_KEY="your_key_here"
+export NETLAS_API_KEY="your_key_here"
+export REDHUNTLABS_API_KEY="your_key_here"
+export BEVIGIL_API_KEY="your_key_here"
 ```
 
 ### URLScan.io Setup
@@ -170,6 +180,32 @@ The GitHub source only requires read access to public repositories. A fine-grain
 ```bash
 export GITHUB_TOKEN="your_token_here"
 ```
+
+### Netlas Setup
+
+Free tier gives 50 API requests/day — sufficient for regular recon use.
+
+1. Go to https://netlas.io and create a free account
+2. Go to your profile page and copy your API key
+3. Export: `export NETLAS_API_KEY="your_key_here"`
+
+### RedHuntLabs Setup
+
+Free community tier available.
+
+1. Go to https://reconapi.redhuntlabs.com
+2. Register for a community account
+3. Copy your API key from the dashboard
+4. Export: `export REDHUNTLABS_API_KEY="your_key_here"`
+
+### BeVigil Setup
+
+Free API key available — no payment required.
+
+1. Go to https://bevigil.com/osint-api
+2. Register for an account
+3. Copy your API key
+4. Export: `export BEVIGIL_API_KEY="your_key_here"`
 
 ---
 
