@@ -53,6 +53,13 @@ var allSources = []sources.Source{
 	&sources.NetlasSource{},
 	&sources.RedHuntLabsSource{},
 	&sources.BeVigilSource{},
+	&sources.CommonCrawl{},
+	&sources.Digitorus{},
+	&sources.HudsonRockSource{},
+	&sources.THCSource{},
+	&sources.SiteDossier{},
+	&sources.ThreatCrowd{},
+	&sources.ReconeerSource{},
 }
 
 func main() {
@@ -550,6 +557,8 @@ func keyEnvVar(id string) string {
 		return "REDHUNTLABS_API_KEY"
 	case "bevigil":
 		return "BEVIGIL_API_KEY"
+	case "reconeer":
+		return "RECONEER_API_KEY"
 	}
 	return ""
 }

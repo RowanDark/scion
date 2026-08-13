@@ -124,6 +124,12 @@ cat domains.txt | scion --subs-only
 | DNSDumpster | `dnsdumpster` | Passive DNS and crawl data |
 | Robtex | `robtex` | Passive DNS historical records |
 | Anubis | `anubis` | Lightweight passive DNS |
+| CommonCrawl | `commoncrawl` | Web crawl index dataset, recent years |
+| Digitorus | `digitorus` | Certificate transparency (certificatedetails.com) |
+| HudsonRock | `hudsonrock` | Infostealer-derived URL dataset |
+| THC | `thc` | Passive DNS lookup API |
+| SiteDossier | `sitedossier` | Passive DNS dataset — rate-limited, captchas aggressively |
+| ThreatCrowd | `threatcrowd` | Largely defunct — retained for compatibility |
 
 ### API-Backed (optional)
 
@@ -143,6 +149,7 @@ Set the relevant environment variable to enable. Sources are silently skipped if
 | Netlas | `netlas` | `NETLAS_API_KEY` | [netlas.io](https://netlas.io) |
 | RedHuntLabs | `redhuntlabs` | `REDHUNTLABS_API_KEY` | [reconapi.redhuntlabs.com](https://reconapi.redhuntlabs.com) |
 | BeVigil | `bevigil` | `BEVIGIL_API_KEY` | [bevigil.com/osint-api](https://bevigil.com/osint-api) |
+| Reconeer | `reconeer` | `RECONEER_API_KEY` | [reconeer.com](https://www.reconeer.com) (free tier: 10 queries/day) |
 
 ---
 
@@ -164,6 +171,7 @@ export URLSCAN_API_KEY="your_key_here"
 export NETLAS_API_KEY="your_key_here"
 export REDHUNTLABS_API_KEY="your_key_here"
 export BEVIGIL_API_KEY="your_key_here"
+export RECONEER_API_KEY="your_key_here"
 ```
 
 ### URLScan.io Setup
@@ -217,6 +225,14 @@ Free API key available — no payment required.
 2. Register for an account
 3. Copy your API key
 4. Export: `export BEVIGIL_API_KEY="your_key_here"`
+
+### Reconeer Setup
+
+Free tier gives 10 API requests/day. Reconeer is opt-in and silently disabled (no warning spam) when no key is set.
+
+1. Go to https://www.reconeer.com and register for a free account
+2. Copy your API key from the dashboard
+3. Export: `export RECONEER_API_KEY="your_key_here"`
 
 ---
 
