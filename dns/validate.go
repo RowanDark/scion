@@ -29,8 +29,8 @@ func ValidateDomains(domains []string, concurrency int, timeout time.Duration) m
 			addrs, err := net.DefaultResolver.LookupHost(ctx, d)
 			// Case 1: Resolves to public IP  -> resolves = true
 			// Case 2: Resolves to private IP -> resolves = true (include, don't filter)
-			// Case 3: Timeout or NXDOMAIN   -> resolves = false (include as unresolved)
-			// Case 4: Any other error        -> resolves = false (include as unresolved)
+			// Case 3: Timeout or NXDOMAIN   -> resolves = false
+			// Case 4: Any other error        -> resolves = false
 			resolves := err == nil && len(addrs) > 0
 
 			mu.Lock()
