@@ -40,7 +40,6 @@ var allSources = []sources.Source{
 	&sources.LeakIX{},
 	&sources.DNSDumpsterSource{},
 	&sources.RobtexSource{},
-	&sources.AnubisSource{},
 	&sources.VirusTotal{},
 	&sources.SecurityTrails{},
 	&sources.Shodan{},
@@ -54,11 +53,7 @@ var allSources = []sources.Source{
 	&sources.RedHuntLabsSource{},
 	&sources.BeVigilSource{},
 	&sources.CommonCrawl{},
-	&sources.Digitorus{},
-	&sources.HudsonRockSource{},
 	&sources.THCSource{},
-	&sources.SiteDossier{},
-	&sources.ThreatCrowd{},
 	&sources.ReconeerSource{},
 }
 
@@ -344,10 +339,13 @@ func runDomain(
 	}
 	sort.Strings(allDomains)
 
-	// DNS validation
-	var resolveMap map[string]bool
+	// DNS validation — when -verify is set, hosts that fail to resolve are
+	// dropped from the result set entirely rather than annotated in output.
+	resolvedCount, unresolvedCount := 0, 0
 	if verify {
-		resolveMap = scionDNS.ValidateDomains(allDomains, dnsConcurrency, timeout)
+		resolveMap := scionDNS.ValidateDomains(allDomains, dnsConcurrency, timeout)
+		allDomains, unresolvedCount = filterUnresolved(allDomains, resolveMap)
+		resolvedCount = len(allDomains)
 	}
 
 	// Scope filtering
@@ -388,9 +386,8 @@ func runDomain(
 			Wildcard: wildcardDetected,
 		}
 
-		if verify && resolveMap != nil {
-			resolves := resolveMap[d]
-			r.Resolves = boolPtr(resolves)
+		if verify {
+			r.Resolves = boolPtr(true)
 		}
 
 		if compare != "" && previousResults != nil {
@@ -407,6 +404,9 @@ func runDomain(
 
 	if len(results) == 0 {
 		if !silent {
+			if verify {
+				printVerifySummary(resolvedCount, unresolvedCount)
+			}
 			fmt.Fprintf(os.Stderr, "%s No results found for %s\n", scionColor.Yellow("[scion]"), domain)
 		}
 		return 2
@@ -424,10 +424,33 @@ func runDomain(
 	}
 
 	if !silent {
+		if verify {
+			printVerifySummary(resolvedCount, unresolvedCount)
+		}
 		printSummary(results, allSourceResults, time.Since(start))
 	}
 
 	return 0
+}
+
+// filterUnresolved returns only the domains that resolved, per resolveMap,
+// along with a count of how many were dropped for failing to resolve.
+func filterUnresolved(domains []string, resolveMap map[string]bool) ([]string, int) {
+	resolved := make([]string, 0, len(domains))
+	unresolvedCount := 0
+	for _, d := range domains {
+		if resolveMap[d] {
+			resolved = append(resolved, d)
+		} else {
+			unresolvedCount++
+		}
+	}
+	return resolved, unresolvedCount
+}
+
+func printVerifySummary(resolvedCount, unresolvedCount int) {
+	fmt.Fprintf(os.Stderr, "%s verified: %d resolved, %d unresolved (omitted)\n",
+		scionColor.Cyan("[scion]"), resolvedCount, unresolvedCount)
 }
 
 func printSummary(results []output.Result, sourceResults []sourceRunResult, elapsed time.Duration) {
@@ -489,7 +512,31 @@ func buildSourceList(sourcesFlag string, silent bool) []sources.Source {
 
 	ids := make(map[string]bool)
 	for _, id := range strings.Split(sourcesFlag, ",") {
-		ids[strings.TrimSpace(id)] = true
+		id = strings.TrimSpace(id)
+		if id != "" {
+			ids[id] = true
+		}
+	}
+
+	known := make(map[string]bool, len(allSources))
+	for _, s := range allSources {
+		known[s.ID()] = true
+	}
+	unknownIDs := make([]string, 0)
+	for id := range ids {
+		if !known[id] {
+			unknownIDs = append(unknownIDs, id)
+		}
+	}
+	sort.Strings(unknownIDs)
+	if !silent {
+		for _, id := range unknownIDs {
+			fmt.Fprintf(os.Stderr, "%s unknown source %q — skipping\n",
+				scionColor.Yellow("[scion] warning:"), id)
+		}
+		if len(unknownIDs) > 0 {
+			fmt.Fprintln(os.Stderr)
+		}
 	}
 
 	var active []sources.Source

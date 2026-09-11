@@ -99,7 +99,7 @@ cat domains.txt | scion --subs-only
 | `--dns-concurrency` | `30` | Max concurrent DNS validation goroutines (used with `--verify`) |
 | `--silent` | false | Suppress banner, warnings, and status output — domain results only |
 | `--no-color` | false | Disable color output (auto-disabled when not a terminal) |
-| `--verify` | false | DNS-validate results and annotate which resolve |
+| `--verify` | false | DNS-validate results and omit hosts that fail to resolve |
 | `--scope-file` | — | Path to a file of in-scope domains; filter output to matches only |
 | `--compare` | — | Path to a previous output file; highlight new findings |
 | `--sources` | all | Comma-separated list of sources to query |
@@ -123,13 +123,8 @@ cat domains.txt | scion --subs-only
 | DNSRepo | `dnsrepo` | Public passive DNS dataset — coverage varies by target |
 | DNSDumpster | `dnsdumpster` | Passive DNS and crawl data |
 | Robtex | `robtex` | Passive DNS historical records |
-| Anubis | `anubis` | Lightweight passive DNS |
 | CommonCrawl | `commoncrawl` | Web crawl index dataset, recent years |
-| Digitorus | `digitorus` | Certificate transparency (certificatedetails.com) |
-| HudsonRock | `hudsonrock` | Infostealer-derived URL dataset |
 | THC | `thc` | Passive DNS lookup API |
-| SiteDossier | `sitedossier` | Passive DNS dataset — rate-limited, captchas aggressively |
-| ThreatCrowd | `threatcrowd` | Largely defunct — retained for compatibility |
 
 ### API-Backed (optional)
 
@@ -252,13 +247,12 @@ Structured output with source attribution and metadata.
 {
   "target": "example.com",
   "timestamp": "2026-05-03T12:00:00Z",
-  "total": 3,
-  "sources_used": ["crtsh", "certspotter", "rapiddns"],
+  "total": 2,
+  "sources_used": ["crtsh", "securitytrails"],
   "wildcard_detected": false,
   "results": [
     { "domain": "sub1.example.com", "source": "crtsh", "resolves": true },
-    { "domain": "sub2.example.com", "source": "securitytrails", "resolves": true },
-    { "domain": "mail.example.com", "source": "wayback", "resolves": false }
+    { "domain": "sub2.example.com", "source": "securitytrails", "resolves": true }
   ]
 }
 ```
@@ -268,7 +262,6 @@ Structured output with source attribution and metadata.
 domain,source,resolves,new,wildcard
 sub1.example.com,crtsh,true,false,false
 sub2.example.com,securitytrails,true,false,false
-mail.example.com,wayback,false,false,false
 ```
 
 ### md
@@ -277,7 +270,6 @@ mail.example.com,wayback,false,false,false
 |--------|--------|----------|-----|
 | sub1.example.com | crtsh | ✓ | — |
 | sub2.example.com | securitytrails | ✓ | — |
-| mail.example.com | wayback | ✗ | — |
 ```
 
 ---
@@ -285,9 +277,9 @@ mail.example.com,wayback,false,false,false
 ## Features
 
 ### DNS Validation (`--verify`)
-After collecting results from all sources, Scion performs a lightweight A/CNAME lookup on each discovered domain to determine if it actively resolves. Unresolvable domains are included in output but flagged — useful for filtering ghost subdomains before passing results to downstream tools.
+After collecting results from all sources, Scion performs a lightweight A/CNAME lookup on each discovered domain to determine if it actively resolves. Domains that fail to resolve are dropped from the result set entirely — they are never printed to stdout, in any output format — so `--verify` output can be piped straight into downstream tools without extra filtering. A one-line summary (`verified: N resolved, M unresolved (omitted)`) is written to stderr so you can see what was dropped.
 
-Wildcard DNS is auto-detected at startup. If `*.target.com` resolves, Scion will warn you and annotate results accordingly, since wildcard responses pollute validation results.
+Wildcard DNS is auto-detected at startup. If `*.target.com` resolves, Scion will warn you, since wildcard responses pollute validation results.
 
 Use `--dns-concurrency` to control how many DNS lookups run in parallel (default: 30).
 
@@ -335,7 +327,6 @@ AlienVault OTX   alienvault       No                    ✓ ready
 DNSRepo          dnsrepo          No                    ✓ ready
 DNSDumpster      dnsdumpster      No                    ✓ ready
 Robtex           robtex           No                    ✓ ready
-Anubis           anubis           No                    ✓ ready
 VirusTotal       virustotal       VT_API_KEY            ✗ key not set
 SecurityTrails   securitytrails   ST_API_KEY            ✗ key not set
 Shodan           shodan           SHODAN_API_KEY        ✗ key not set

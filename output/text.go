@@ -15,11 +15,7 @@ func (t *TextFormatter) Write(w io.Writer, results []Result, target string, time
 		if r.New != nil && *r.New {
 			prefix = "[NEW] "
 		}
-		suffix := ""
-		if r.Resolves != nil && !*r.Resolves {
-			suffix = " # unresolved"
-		}
-		if _, err := fmt.Fprintf(w, "%s%s%s\n", prefix, r.Domain, suffix); err != nil {
+		if _, err := fmt.Fprintf(w, "%s%s\n", prefix, r.Domain); err != nil {
 			return err
 		}
 	}
